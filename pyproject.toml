@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "refgap"
+version = "0.1.0"
+description = "Cross-table inclusion-dependency (foreign-key) discovery with evidence, plus an independent ingress validator"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "Flask>=3.0,<4",
+  "openpyxl>=3.1,<4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+
+[project.scripts]
+refgap = "refgap.cli:main"
+refgap-validate = "validator.cli:main"
+
+[tool.setuptools]
+packages = ["refgap", "validator"]
+
+[tool.setuptools.package-data]
+refgap = ["../templates/*.html", "../static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}{{ cand.candidate_key }} · RefGap{% endblock %}
+{% block content %}
+<nav class="crumbs">
+  <a href="{{ url_for('index') }}">批次</a> /
+  <a href="{{ url_for('dataset_page', dataset_id=dataset.id) }}">{{ dataset.name }}</a> /
+  <a href="{{ url_for('run_page', dataset_id=dataset.id, run_id=run_id) }}">运行 {{ run_id }}</a> /
+  <span>候选</span>
+</nav>
+
+<section class="panel candidate-head">
+  <div>
+    <h1 class="cand-title">
+      <span>{{ cand.child_table }}<span class="muted">[{{ cand.child_cols|join(', ') }}]</span></span>
+      <span class="arrow" aria-hidden="true">→</span>
+      <span>{{ cand.parent_table }}<span class="muted">[{{ cand.parent_cols|join(', ') }}]</span></span>
+    </h1>
+    <p class="muted small">
+      宽度 {{ cand.width }} · 映射 {{ mapping_labels.get(cand.mapping_mode, cand.mapping_mode) }}
+      {% if cand.stats.mapping_effective %}（实际：{{ cand.stats.mapping_effective|join(' / ') }}）{% endif %}
+      · {{ null_labels.get(cand.stats.null_policy, cand.stats.null_policy) }}
+    </p>
+  </div>
+  <div class="cand-state">
+    <span class="badge {{ cand.state }}">{{ states.get(cand.state, cand.state) }}</span>
+    <span class="conf {{ cand.confidence }}">{{ {'high':'高置信','medium':'中置信','low':'低置信','insufficient':'证据不足','none':'—'}.get(cand.confidence, cand.confidence) }}</span>
+  </div>
+</section>
+
+{% if decision_error %}<div class="notice error">{{ decision_error }}</div>{% endif %}
+
+{% if cand.stats.degenerate %}
+<div class="notice error">
+  <strong>证据不足，不能作为高可信引用：</strong>{{ cand.stats.reason_label }}
+  {% if cand.stats.cast_error_sample %}<span class="mono small">{{ cand.stats.cast_error_sample|join('；') }}</span>{% endif %}
+</div>
+{% endif %}
+
+<section class="scope">
+  <h2>证据</h2>
+  <div class="scope-grid">
+    <div class="stat"><span class="stat-n">{{ '%.1f%%'|format((cand.stats.key_coverage or 0) * 100) }}</span><span class="stat-l">键覆盖率</span></div>
+    <div class="stat"><span class="stat-n">{{ '%.1f%%'|format((cand.stats.row_coverage or 0) * 100) }}</span><span class="stat-l">行覆盖率</span></div>
+    <div class="stat"><span class="stat-n">{{ cand.stats.covered_keys|default(0) }} / {{ cand.stats.child_eligible_keys|default(0) }}</span><span class="stat-l">覆盖键 / 可比较键</span></div>
+    <div class="stat {{ 'warn' if cand.stats.missing_keys }}"><span class="stat-n">{{ cand.stats.missing_keys|default(0) }}</span><span class="stat-l">不能匹配的键</span></div>
+    <div class="stat"><span class="stat-n">{{ cand.stats.parent_distinct_keys|default(0) }}</span><span class="stat-l">父表去重键</span></div>
+    <div class="stat"><span class="stat-n">{{ cand.stats.parent_rows|default(0) }}</span><span class="stat-l">父表行数</span></div>
+  </div>
+  <p class="hint">
+    父表重复行会合并为同一个键（本候选合并了 {{ cand.stats.parent_rows_collapsed|default(0) }} 行，{{ cand.stats.parent_duplicate_keys|default(0) }} 个键有重复），
+    因此父表重复记录不会提高覆盖率。
+    {% if cand.stats.child_null_key_rows %}子表含空键的行：{{ cand.stats.child_null_key_rows }}（按所选规则处理）。{% endif %}
+  </p>
+  {% if cand.stats.single_column and cand.stats.single_column.pairs %}
+  <div class="projection">
+    <h3>单列投影（只是组合的必要条件）</h3>
+    <ul>
+      {% for p in cand.stats.single_column.pairs %}
+      <li>
+        <span class="mono">{{ p.child_col }} → {{ p.parent_col }}</span>
+        <span class="badge {{ 'pass' if p.holds else 'fail' }}">{{ '单列包含成立' if p.holds else '单列包含不成立' }}</span>
+        <span class="muted small">{{ p.child_keys }} / {{ p.parent_keys }} 个键</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% if cand.stats.single_column.both_hold and cand.state == 'partial' %}
+    <p class="notice">两个单列都包含，但<strong>组合元组不包含</strong>：这正是必须实测组合的原因。</p>
+    {% elif not cand.stats.single_column.both_hold %}
+    <p class="hint">单列投影不成立，组合必然不成立，因此该候选未进入精确核验。</p>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+
+<section class="grid-2">
+  <div class="panel">
+    <h2>覆盖的真实记录（前 {{ cand.stats.covered_sample|default([])|length }} 个键）</h2>
+    {% if cand.stats.covered_sample %}
+    <table class="data-table small">
+      <thead><tr><th>源行</th>{% for c in cand.child_cols %}<th>{{ c }}</th>{% endfor %}<th>出现次数</th></tr></thead>
+      <tbody>
+      {% for s in cand.stats.covered_sample %}
+        <tr><td class="num muted">{{ s.row }}</td>{% for v in s['values'] %}<td class="mono">{{ v if v is not none else '∅' }}</td>{% endfor %}<td class="num">{{ s.occurrences }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="empty">没有可展示的覆盖记录。</p>{% endif %}
+  </div>
+
+  <div class="panel">
+    <h2>不能匹配的反例（{{ cand.stats.missing_keys|default(0) }} 个键，{{ cand.stats.missing_rows|default(0) }} 行）</h2>
+    {% if counterexamples %}
+    <table class="data-table small">
+      <thead><tr><th>子表行</th>{% for c in cand.child_cols %}<th>{{ c }}</th>{% endfor %}<th>出现</th><th>空键</th></tr></thead>
+      <tbody>
+      {% for c in counterexamples %}
+        <tr><td class="num muted">{{ c.row }}</td>{% for v in c['values'] %}<td class="mono">{{ v if v is not none else '∅' }}</td>{% endfor %}
+          <td class="num">{{ c.occurrences }}</td><td>{{ '是' if c.null_key else '' }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% if counterexamples_total > counterexamples|length %}
+    <p class="hint">页面展示前 {{ counterexamples|length }} 个键（共保存 {{ counterexamples_total }} 个）；下载 CSV 可获取全部 {{ counterexamples_total }} 个键。</p>
+    {% endif %}
+    <p><a class="btn small" href="{{ url_for('counterexamples_csv', dataset_id=dataset.id, run_id=run_id, candidate_key=cand.candidate_key) }}">下载反例 CSV</a></p>
+    {% else %}
+    <p class="empty">{{ '没有反例：全部子表键都能在父表找到。' if cand.state == 'contained' else '未进入精确核验，没有反例清单。' }}</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="panel">
+  <h2>决定</h2>
+  {% if decision %}
+  <p>当前决定：<span class="badge {{ decision.action }}">{{ '已确认' if decision.action == 'confirmed' else '已排除' }}</span>
+    {% if decision.note %}<span class="muted">备注：{{ decision.note }}</span>{% endif %}</p>
+  <form method="post" action="{{ url_for('decide', dataset_id=dataset.id, run_id=run_id, candidate_key=cand.candidate_key) }}">
+    <input type="hidden" name="action" value="clear">
+    <button class="btn small" type="submit">撤销决定</button>
+  </form>
+  {% else %}
+  <form method="post" action="{{ url_for('decide', dataset_id=dataset.id, run_id=run_id, candidate_key=cand.candidate_key) }}" class="decision-form">
+    <label class="field">
+      <span>备注（可选）</span>
+      <input name="note" placeholder="为什么确认或排除">
+    </label>
+    {% if cand.state == 'partial' %}
+    <label class="checkbox"><input type="checkbox" name="allow_partial"> 我知道仍存在 {{ cand.stats.missing_keys }} 个缺失键，确认后这些键在下一批仍会被校验拦截</label>
+    {% endif %}
+    <div class="actions">
+      <button class="btn primary" type="submit" name="action" value="confirmed" {{ 'disabled' if cand.stats.degenerate }}>确认关系</button>
+      <button class="btn" type="submit" name="action" value="excluded">排除候选</button>
+    </div>
+    <p class="hint">只有「确认」会进入入仓校验。排除的候选不会变成硬约束。</p>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}

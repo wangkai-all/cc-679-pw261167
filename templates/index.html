@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <h1>找出表与表之间真实的引用关系</h1>
+  <p class="lede">
+    上传若干张表，系统按<strong>值域包含</strong>搜索单列与两列组合的候选引用，
+    列出覆盖的真实记录与不能匹配的反例。确认后的关系交给独立校验器，
+    下一批文件出现孤儿记录时拒绝对应发布。
+  </p>
+  <ul class="principles">
+    <li><strong>不靠名字</strong>：字段同名但值不包含，不会被当成引用。</li>
+    <li><strong>组合要实测</strong>：两个单列分别包含，组合元组仍须核验。</li>
+    <li><strong>顺序有意义</strong>：(门店, 商品) 与 (商品, 门店) 是两个候选。</li>
+    <li><strong>空值有规则</strong>：规则由你选择，系统从不悄悄猜。</li>
+  </ul>
+</section>
+
+<section class="panel">
+  <h2>新建批次</h2>
+  <form method="post" action="{{ url_for('create_dataset') }}" class="inline-form">
+    <label class="field grow">
+      <span>批次名称</span>
+      <input name="name" placeholder="例如 2026-11 订单域" maxlength="80" required>
+    </label>
+    <button class="btn primary" type="submit">创建</button>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>已有批次</h2>
+  {% if datasets %}
+  <table class="data-table">
+    <thead><tr><th>批次</th><th>表数量</th><th>校验次数</th><th>创建时间</th><th></th></tr></thead>
+    <tbody>
+    {% for d in datasets %}
+      <tr>
+        <td><a href="{{ url_for('dataset_page', dataset_id=d.id) }}">{{ d.name }}</a></td>
+        <td class="num">{{ d.table_count }}</td>
+        <td class="num">{{ d.validation_count }}</td>
+        <td class="muted">{{ d.created_at }}</td>
+        <td><a class="btn small" href="{{ url_for('dataset_page', dataset_id=d.id) }}">打开</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">还没有批次。先创建一个，再上传 CSV / TSV / JSONL / XLSX。</p>
+  {% endif %}
+</section>
+{% endblock %}

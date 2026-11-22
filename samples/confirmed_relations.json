@@ -1,0 +1,102 @@
+{
+  "dataset": "demo-batch-1",
+  "relations": [
+    {
+      "status": "confirmed",
+      "child_table": "orders",
+      "child_cols": [
+        "store_id"
+      ],
+      "parent_table": "stores",
+      "parent_cols": [
+        "store_id"
+      ],
+      "mapping_mode": "auto",
+      "effective": [
+        "none"
+      ],
+      "child_logical": [
+        "string"
+      ],
+      "parent_logical": [
+        "string"
+      ],
+      "null_policy": "skip_child_nulls",
+      "candidate_key": "orders[store_id] -> stores[store_id] @auto"
+    },
+    {
+      "status": "confirmed",
+      "child_table": "orders",
+      "child_cols": [
+        "sku"
+      ],
+      "parent_table": "products",
+      "parent_cols": [
+        "sku"
+      ],
+      "mapping_mode": "auto",
+      "effective": [
+        "none"
+      ],
+      "child_logical": [
+        "string"
+      ],
+      "parent_logical": [
+        "string"
+      ],
+      "null_policy": "skip_child_nulls",
+      "candidate_key": "orders[sku] -> products[sku] @auto"
+    },
+    {
+      "status": "confirmed",
+      "child_table": "inventory_snapshots",
+      "child_cols": [
+        "store_id",
+        "sku"
+      ],
+      "parent_table": "store_sku_catalog",
+      "parent_cols": [
+        "store_id",
+        "sku"
+      ],
+      "mapping_mode": "auto",
+      "effective": [
+        "none",
+        "none"
+      ],
+      "child_logical": [
+        "string",
+        "string"
+      ],
+      "parent_logical": [
+        "string",
+        "string"
+      ],
+      "null_policy": "skip_child_nulls",
+      "candidate_key": "inventory_snapshots[store_id,sku] -> store_sku_catalog[store_id,sku] @auto"
+    },
+    {
+      "status": "excluded",
+      "child_table": "legacy_sales",
+      "child_cols": [
+        "product_id"
+      ],
+      "parent_table": "legacy_products",
+      "parent_cols": [
+        "product_id"
+      ],
+      "mapping_mode": "auto",
+      "effective": [
+        "none"
+      ],
+      "child_logical": [
+        "string"
+      ],
+      "parent_logical": [
+        "string"
+      ],
+      "null_policy": "skip_child_nulls",
+      "candidate_key": "legacy_sales[product_id] -> legacy_products[product_id] @auto"
+    }
+  ]
+}

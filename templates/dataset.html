@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}{{ dataset.name }} · RefGap{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="{{ url_for('index') }}">批次列表</a> / <span>{{ dataset.name }}</span></nav>
+
+{% if upload_errors %}
+<section class="panel error-panel">
+  <h2>上传时有 {{ upload_errors|length }} 个问题</h2>
+  <ul>{% for e in upload_errors %}<li>{{ e }}</li>{% endfor %}</ul>
+  {% if upload_added %}<p class="muted">已成功载入：{{ upload_added|join('、') }}</p>{% endif %}
+</section>
+{% endif %}
+
+<section class="grid-2">
+  <div class="panel">
+    <h2>1 · 上传文件</h2>
+    <form method="post" action="{{ url_for('upload', dataset_id=dataset.id) }}" enctype="multipart/form-data">
+      <label class="field">
+        <span>可多选。类型：{{ allowed_ext }}</span>
+        <input type="file" name="files" multiple required>
+      </label>
+      <p class="hint">同名文件会作为新的表追加，表名自动去重。空表与全空列会被标记，但不会被列为高可信引用。</p>
+      <button class="btn primary" type="submit">上传并解析</button>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h2>2 · 搜索参数</h2>
+    <form method="post" action="{{ url_for('start_search', dataset_id=dataset.id) }}">
+      <div class="field-row">
+        <label class="field">
+          <span>组合宽度</span>
+          <select name="width">
+            <option value="1">仅单列</option>
+            <option value="2" selected>单列 + 两列组合</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>空值规则</span>
+          <select name="null_policy">
+            {% for key, label in null_labels.items() %}
+            <option value="{{ key }}" {{ 'selected' if key == 'skip_child_nulls' else '' }}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+      <label class="field">
+        <span>类型映射</span>
+        <select name="mapping">
+          {% for key, label in mapping_labels.items() %}
+          <option value="{{ key }}" {{ 'selected' if key == 'auto' else '' }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="field-row">
+        <label class="field">
+          <span>最多核验候选数</span>
+          <input type="number" name="max_verified" value="400" min="1" max="200000">
+        </label>
+        <label class="field">
+          <span>时间预算（秒）</span>
+          <input type="number" name="max_seconds" value="20" min="1" max="600">
+        </label>
+      </div>
+      <label class="checkbox"><input type="checkbox" name="include_self"> 包含同表内引用（自引用）</label>
+      <details class="col-limit">
+        <summary>限定候选列（可选）</summary>
+        <p class="hint">每张表一行，逗号分隔列名。留空表示使用全部列。限定后的搜索范围会记录在运行参数里。</p>
+        {% for t in dataset.tables %}
+        <label class="field">
+          <span>{{ t.name }}</span>
+          <input name="cols_{{ t.name }}" placeholder="{{ t.columns|map(attribute='name')|join(', ') }}">
+        </label>
+        {% endfor %}
+      </details>
+      <button class="btn primary" type="submit" {{ 'disabled' if dataset.tables|length < 2 else '' }}>开始搜索</button>
+      {% if dataset.tables|length < 2 %}<p class="hint">至少需要两张表。</p>{% endif %}
+    </form>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>已载入的表（{{ dataset.tables|length }}）</h2>
+  {% if dataset.tables %}
+  <div class="table-scroll">
+  <table class="data-table">
+    <thead><tr><th>表名</th><th>文件</th><th>行数</th><th>列（类型）</th><th>版本哈希</th><th>提示</th></tr></thead>
+    <tbody>
+    {% for t in dataset.tables %}
+      <tr>
+        <td><strong>{{ t.name }}</strong></td>
+        <td class="muted">{{ t.original_filename }}</td>
+        <td class="num">{{ t.row_count }}</td>
+        <td class="cols">
+          {% for c in t.columns %}<span class="chip {{ c.type }}">{{ c.name }}<span class="chip-type">{{ c.type }}</span></span>{% endfor %}
+        </td>
+        <td class="mono muted" title="{{ t.source_hash }}">{{ t.source_hash[:10] }}</td>
+        <td class="muted small">{{ t.warnings|join('；') if t.warnings else '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">还没有表。上传至少两个文件后即可搜索。</p>
+  {% endif %}
+</section>
+
+<section class="grid-2 wide-left">
+  <div class="panel">
+    <h2>搜索运行</h2>
+    {% if runs %}
+    <table class="data-table runs-table">
+      <thead><tr><th>运行</th><th>状态</th><th>范围</th><th></th></tr></thead>
+      <tbody>
+      {% for r in runs %}
+        <tr>
+          <td>
+            <a class="mono" href="{{ url_for('run_page', dataset_id=dataset.id, run_id=r.id) }}">{{ r.id }}</a>
+            <div class="muted small">{{ r.created_at }}</div>
+            <div class="muted small">宽度 {{ r.params.width_max }} · {{ null_labels.get(r.params.null_policy, r.params.null_policy) }}</div>
+          </td>
+          <td><span class="badge {{ r.status }}">{{ run_states.get(r.status, r.status) }}</span></td>
+          <td class="small">
+            {% if r.scope.enumerated is defined %}
+            枚举 {{ r.scope.enumerated }} · 核验 {{ r.scope.verified }}
+            <div class="muted small">未核验 {{ r.scope.unverified|default(0) }}</div>
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+          <td class="nowrap"><a class="btn small" href="{{ url_for('run_page', dataset_id=dataset.id, run_id=r.id) }}">查看</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty">还没有运行记录。</p>
+    {% endif %}
+  </div>
+
+  <div class="panel">
+    <h2>3 · 入仓校验</h2>
+    <p class="hint">仅使用已确认的关系。上传下一批同名文件；存在孤儿记录时拒绝对应发布，并列出缺失键。</p>
+    <p>已确认关系：<strong>{{ dataset.decisions|selectattr('action','equalto','confirmed')|list|length }}</strong>
+      条，已排除：<strong>{{ dataset.decisions|selectattr('action','equalto','excluded')|list|length }}</strong> 条。</p>
+    <form method="post" action="{{ url_for('validate_batch', dataset_id=dataset.id) }}" enctype="multipart/form-data">
+      <label class="field">
+        <span>批次标签（可选）</span>
+        <input name="label" placeholder="例如 2026-11-22 晚批">
+      </label>
+      <label class="field">
+        <span>本批文件（表名取文件名主干）</span>
+        <input type="file" name="files" multiple required>
+      </label>
+      <p class="hint">若本批未包含某个已确认关系的子表文件，该关系记为「本批不适用」，不会被当作通过。</p>
+      <button class="btn primary" type="submit" {{ 'disabled' if not dataset.decisions|selectattr('action','equalto','confirmed')|list else '' }}>执行校验</button>
+    </form>
+    <p class="hint"><a href="{{ url_for('manifest', dataset_id=dataset.id) }}">下载已确认关系清单（JSON，可交给 CLI 校验器）</a></p>
+    {% if validations %}
+    <h3>历史校验</h3>
+    <ul class="validation-list">
+      {% for v in validations %}
+      <li>
+        <span class="badge {{ 'pass' if v.ok else 'fail' }}">{{ '允许发布' if v.ok else '拒绝发布' }}</span>
+        <a href="{{ url_for('validation_page', dataset_id=dataset.id, validation_id=v.id) }}">{{ v.label or v.id }}</a>
+        <span class="muted small">{{ v.created_at }} · 孤儿行 {{ v.orphan_rows }}{% if v.structure_relations %} · 结构失败 {{ v.structure_relations }}{% endif %}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

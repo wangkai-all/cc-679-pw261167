@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}入仓校验 · RefGap{% endblock %}
+{% block content %}
+<nav class="crumbs">
+  <a href="{{ url_for('index') }}">批次</a> /
+  <a href="{{ url_for('dataset_page', dataset_id=dataset.id) }}">{{ dataset.name }}</a> /
+  <span>入仓校验</span>
+</nav>
+
+{% if error %}
+<section class="panel error-panel"><h1>无法校验</h1><p>{{ error }}</p>
+  <p><a class="btn small" href="{{ url_for('dataset_page', dataset_id=dataset.id) }}">返回批次</a></p>
+</section>
+{% else %}
+
+<section class="panel verdict {{ 'pass' if result.ok else 'fail' }}">
+  <div>
+    <h1>{{ '允许发布' if result.ok else '拒绝发布' }}</h1>
+    <p>
+      {{ result.relation_count }} 条已确认关系，实际约束 {{ result.enforced_count }} 条，
+      本批次不适用 {{ result.not_applicable_count }} 条。
+      {% if not result.ok %}<strong>{{ result.refusal_reason }}</strong>{% endif %}
+    </p>
+    {% if result.publication_label %}<p class="muted">批次标签：{{ result.publication_label }}</p>{% endif %}
+    {% if result.missing_tables %}
+    <p class="notice">本批次未提供：{{ result.missing_tables|join('、') }}。子表缺失的关系记为「本批不适用」；父表缺失而子表仍需解析的关系直接失败——两种情况都不会静默通过。</p>
+    {% endif %}
+  </div>
+</section>
+
+<table class="data-table">
+  <thead>
+    <tr><th>已确认关系</th><th>结果</th><th>子表行</th><th>可比较行</th><th>空键行</th><th>孤儿行</th><th>孤儿键</th></tr>
+  </thead>
+  <tbody>
+  {% for r in result.relations %}
+    <tr class="{{ 'row-fail' if r.status in ('fail','error') else '' }}">
+      <td class="mono">{{ r.candidate_key }}</td>
+      <td>
+        <span class="badge {{ 'pass' if r.status == 'pass' else ('fail' if r.status in ('fail','error') else 'na') }}">
+          {{ {'pass':'通过','fail':'孤儿记录','not_applicable':'本批不适用','error':'错误'}.get(r.status, r.status) }}
+        </span>
+        <div class="muted small">{{ r.reason }}</div>
+      </td>
+      <td class="num">{{ r.child_rows }}</td>
+      <td class="num">{{ r.eligible_rows }}</td>
+      <td class="num">{{ r.null_rows }}</td>
+      <td class="num">{{ r.orphan_rows }}</td>
+      <td class="num">{{ r.orphan_keys }}</td>
+    </tr>
+    {% if r.sample %}
+    <tr class="sample-row">
+      <td colspan="7">
+        <table class="data-table small inner">
+          <thead><tr><th>子表行</th><th>缺失键</th><th>出现次数</th></tr></thead>
+          <tbody>
+          {% for s in r.sample %}
+            <tr><td class="num muted">{{ s.row }}</td><td class="mono">{{ s['values']|join(' , ') }}</td><td class="num">{{ s.occurrences }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% if r.sample_truncated %}<p class="hint">示例已截断；计数为完整值。</p>{% endif %}
+      </td>
+    </tr>
+    {% endif %}
+  {% endfor %}
+  </tbody>
+</table>
+
+{% if comparison %}
+<section class="panel">
+  <h2>与上一批相比</h2>
+  <div class="scope-grid">
+    <div class="stat"><span class="stat-n">{{ comparison.total_orphans_previous }}</span><span class="stat-l">上批孤儿行</span></div>
+    <div class="stat"><span class="stat-n">{{ comparison.total_orphans_current }}</span><span class="stat-l">本批孤儿行</span></div>
+    <div class="stat {{ 'warn' if comparison.new_failures }}"><span class="stat-n">{{ comparison.new_failures }}</span><span class="stat-l">缺口变多的关系</span></div>
+    <div class="stat"><span class="stat-n">{{ comparison.improved_relations }}</span><span class="stat-l">缺口变少的关系</span></div>
+  </div>
+  <table class="data-table small">
+    <thead><tr><th>关系</th><th>上批</th><th>本批</th><th>变化</th><th>新增缺口键</th><th>已解决缺口键</th><th>仍然缺失</th></tr></thead>
+    <tbody>
+    {% for r in comparison.relations %}
+      <tr>
+        <td class="mono">{{ r.candidate_key }}</td>
+        <td class="num">{{ r.orphans_previous }}</td>
+        <td class="num">{{ r.orphans_current }}</td>
+        <td class="num {{ 'up' if r.delta > 0 else ('down' if r.delta < 0 else '') }}">{{ '%+d'|format(r.delta) }}</td>
+        <td class="num">{{ r.new_gap_keys if r.new_gap_keys is not none else '—' }}</td>
+        <td class="num">{{ r.resolved_gap_keys if r.resolved_gap_keys is not none else '—' }}</td>
+        <td class="num">{{ r.persisting_gap_keys if r.persisting_gap_keys is not none else '—' }}</td>
+      </tr>
+      {% if r.new_gap_samples %}
+      <tr class="sample-row"><td colspan="7">
+        <p class="small muted">本批新增缺口示例：</p>
+        <table class="data-table small inner">
+          <thead><tr><th>子表行</th><th>缺失键</th><th>出现次数</th></tr></thead>
+          <tbody>
+          {% for s in r.new_gap_samples %}
+            <tr><td class="num muted">{{ s.row }}</td><td class="mono">{{ s['values']|join(' , ') }}</td><td class="num">{{ s.occurrences }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </td></tr>
+      {% endif %}
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+{% if files %}
+<section class="panel">
+  <h2>本批文件</h2>
+  <ul class="file-list">
+    {% for name, path in files.items() %}<li class="mono">{{ name }} <span class="muted small">{{ path }}</span></li>{% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

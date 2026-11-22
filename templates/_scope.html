@@ -1,0 +1,47 @@
+{% set s = run.scope or {} %}
+<section class="scope">
+  <h2>实际搜索范围</h2>
+  {% if s.enumerated is defined %}
+  <div class="scope-grid">
+    <div class="stat"><span class="stat-n">{{ s.enumerated }}</span><span class="stat-l">枚举候选</span></div>
+    <div class="stat"><span class="stat-n">{{ s.pruned }}</span><span class="stat-l">结构性排除</span></div>
+    <div class="stat"><span class="stat-n">{{ s.eligible }}</span><span class="stat-l">可核验</span></div>
+    <div class="stat"><span class="stat-n">{{ s.verified }}</span><span class="stat-l">已精确核验</span></div>
+    <div class="stat {{ 'warn' if s.unverified else '' }}"><span class="stat-n">{{ s.unverified }}</span><span class="stat-l">未核验</span></div>
+    <div class="stat"><span class="stat-n">{{ s.elapsed_seconds }}s</span><span class="stat-l">耗时</span></div>
+  </div>
+  {% if s.note %}<p class="notice">{{ s.note }}</p>{% endif %}
+  <details class="prune-details">
+    <summary>按原因查看结构性排除（{{ s.pruned }}）</summary>
+    <table class="data-table small">
+      <thead><tr><th>原因</th><th>数量</th><th>示例</th></tr></thead>
+      <tbody>
+      {% for reason, n in (s.pruned_by_reason or {})|dictsort(by='value', reverse=true) %}
+        <tr>
+          <td>{{ {'child_empty':'子表为空','child_all_null':'子表选中列全空','child_no_eligible_rows':'子表无可比较行',
+                  'parent_empty':'父表为空','parent_all_null':'父表选中列全空','parent_no_eligible_rows':'父表无可比较键',
+                  'type_incompatible':'类型映射不兼容','cast_errors':'存在无法转换的值','cardinality':'子表键数多于父表',
+                  'range':'取值范围超出','projection':'单列投影不包含','mapping':'映射问题'}.get(reason, reason) }}</td>
+          <td class="num">{{ n }}</td>
+          <td class="mono small">
+            {% for ex in (s.pruned_examples or {}).get(reason, [])[:3] %}
+              <div>{{ ex.candidate_key }}</div>
+            {% endfor %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="hint">结构性排除是确定的：这些候选不可能成立（例如子表键数一定多于父表，或范围超出父表）。它们不是“没时间看”。每个原因最多展示 3 个示例，数量为完整计数。</p>
+  </details>
+  {% else %}
+  <p class="muted">运行尚未写入范围信息。</p>
+  {% endif %}
+  <details class="params">
+    <summary>参数与输入版本</summary>
+    <dl class="kv">
+      <dt>参数</dt><dd class="mono small">{{ run.params|tojson }}</dd>
+      <dt>输入快照</dt><dd class="mono small">{{ run.table_snapshot|tojson }}</dd>
+    </dl>
+  </details>
+</section>

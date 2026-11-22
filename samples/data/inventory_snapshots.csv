@@ -1,0 +1,5 @@
+snapshot_id,store_id,sku,on_hand
+INV-1,S01,SKU-100,12
+INV-2,S02,SKU-102,4
+INV-3,S03,SKU-103,0
+INV-4,S01,SKU-100,11

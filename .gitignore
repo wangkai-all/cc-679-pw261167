@@ -1,16 +1,18 @@
-
 .env
 .env.*
 !.env.example
 node_modules/
 .venv/
+*.egg-info/
 __pycache__/
+*.py[cod]
 .claude/
 .cc-workbench/
 .next/
 .nuxt/
 target/
 dist/
+build/
 coverage/
 playwright-report/
 test-results/
@@ -19,6 +21,7 @@ test-results/
 *.7z
 *.tar
 *.gz
+.refgap/
 *.db
 *.db-wal
 *.db-shm
@@ -31,4 +34,5 @@ test-results/
 *.sqlite3-wal
 *.sqlite3-shm
 *.sqlite3-journal
+.pytest_cache/
 !*.traineddata.gz

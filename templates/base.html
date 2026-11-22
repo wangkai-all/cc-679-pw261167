@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}RefGap · 跨表引用发现{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header class="site-header">
+  <a class="brand" href="{{ url_for('index') }}">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span>RefGap</span>
+  </a>
+  <p class="tagline">跨表包含依赖 · 证据可核验 · 入仓可拦截</p>
+</header>
+<main class="page">
+{% block content %}{% endblock %}
+</main>
+<footer class="site-footer">
+  <p>候选关系来自值域包含，不来自字段名相似。只有你确认的关系才会成为入仓约束。</p>
+</footer>
+{% block scripts %}{% endblock %}
+</body>
+</html>

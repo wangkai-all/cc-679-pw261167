@@ -1,0 +1,4 @@
+order_id,store_id,sku,qty
+O-11,S01,SKU-100,1
+O-12,S99,SKU-102,2
+O-13,S02,SKU-999,4

@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}运行 {{ run.id }} · RefGap{% endblock %}
+{% block content %}
+<nav class="crumbs">
+  <a href="{{ url_for('index') }}">批次</a> /
+  <a href="{{ url_for('dataset_page', dataset_id=dataset.id) }}">{{ dataset.name }}</a> /
+  <span>运行 {{ run.id }}</span>
+</nav>
+
+<section class="panel">
+  <div class="run-head">
+    <div>
+      <h1>候选关系</h1>
+      <p class="muted small">
+        宽度 {{ run.params.width_max }} · {{ null_labels.get(run.params.null_policy, run.params.null_policy) }} ·
+        {{ mapping_labels.get(run.params.mapping, run.params.mapping) }}
+        {% if run.params.column_limit %}· 已限定候选列{% endif %}
+      </p>
+    </div>
+    <div class="run-actions">
+      <span id="run-badge" class="badge {{ run.status }}">{{ run_states.get(run.status, run.status) }}{% if run.status == 'completed' and run.scope.budget_exhausted %} · 未核验 {{ run.scope.unverified }}{% endif %}</span>
+      {% if running %}
+      <form method="post" action="{{ url_for('stop_search', dataset_id=dataset.id, run_id=run.id) }}" class="inline">
+        <button class="btn small" type="submit">停止</button>
+      </form>
+      {% elif run.status in ('interrupted', 'completed') and run.scope.unverified and run.scope.unverified > 0 %}
+      <form method="post" action="{{ url_for('resume_search', dataset_id=dataset.id, run_id=run.id) }}" class="inline">
+        <button class="btn small primary" type="submit">继续未核验的候选</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  {% include "_scope.html" %}
+
+  <div class="tabs">
+    {% set total_all = counts.values()|sum %}
+    <a class="tab {{ 'active' if state_filter == 'all' }}" href="{{ url_for('run_page', dataset_id=dataset.id, run_id=run.id, width=width, q=q) }}">全部 <span class="n">{{ total_all }}</span></a>
+    <a class="tab {{ 'active' if state_filter == 'contained' }}" href="{{ url_for('run_page', dataset_id=dataset.id, run_id=run.id, state='contained', width=width, q=q) }}">包含 <span class="n">{{ counts.get('contained', 0) }}</span></a>
+    <a class="tab {{ 'active' if state_filter == 'partial' }}" href="{{ url_for('run_page', dataset_id=dataset.id, run_id=run.id, state='partial', width=width, q=q) }}">部分包含 <span class="n">{{ counts.get('partial', 0) }}</span></a>
+    <a class="tab {{ 'active' if state_filter == 'error' }}" href="{{ url_for('run_page', dataset_id=dataset.id, run_id=run.id, state='error', width=width, q=q) }}">错误 <span class="n">{{ counts.get('error', 0) }}</span></a>
+  </div>
+
+  <form class="filters" method="get" action="{{ url_for('run_page', dataset_id=dataset.id, run_id=run.id) }}">
+    <input type="hidden" name="state" value="{{ state_filter }}">
+    <label class="field small">
+      <span>宽度</span>
+      <select name="width" onchange="this.form.submit()">
+        <option value="" {{ 'selected' if not width }}>全部</option>
+        <option value="1" {{ 'selected' if width == 1 }}>1 列</option>
+        <option value="2" {{ 'selected' if width == 2 }}>2 列</option>
+      </select>
+    </label>
+    <label class="field small grow">
+      <span>按候选键过滤</span>
+      <input name="q" value="{{ q }}" placeholder="例如 orders[store_id]">
+    </label>
+    <button class="btn small" type="submit">过滤</button>
+  </form>
+
+  {% if candidates %}
+  <div class="table-scroll">
+  <table class="data-table candidates">
+    <thead>
+      <tr>
+        <th>子表列</th><th>父表列</th><th>宽度</th><th>状态</th><th>置信</th>
+        <th>键覆盖率</th><th>行覆盖率</th><th>缺失</th><th>决定</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for c in candidates %}
+      {% set d = decisions.get(c.candidate_key) %}
+      <tr class="{{ 'row-confirmed' if d and d.action == 'confirmed' else ('row-excluded' if d and d.action == 'excluded' else '') }}">
+        <td>
+          <a class="cand-link" href="{{ url_for('candidate_page', dataset_id=dataset.id, run_id=run.id, candidate_key=c.candidate_key) }}">
+            <strong>{{ c.child_table }}</strong><span class="muted">[{{ c.child_cols|join(', ') }}]</span>
+          </a>
+        </td>
+        <td>
+          <a class="cand-link" href="{{ url_for('candidate_page', dataset_id=dataset.id, run_id=run.id, candidate_key=c.candidate_key) }}">
+            <strong>{{ c.parent_table }}</strong><span class="muted">[{{ c.parent_cols|join(', ') }}]</span>
+          </a>
+        </td>
+        <td class="num">{{ c.width }}</td>
+        <td><span class="badge {{ c.state }}">{{ states.get(c.state, c.state) }}</span></td>
+        <td>
+          <span class="conf {{ c.confidence }}">{{ {'high':'高','medium':'中','low':'低','insufficient':'不足','none':'—'}.get(c.confidence, c.confidence) }}</span>
+        </td>
+        <td class="num">{{ '%.1f%%'|format((c.stats.key_coverage or 0) * 100) if c.stats.key_coverage is not none else '—' }}</td>
+        <td class="num">{{ '%.1f%%'|format((c.stats.row_coverage or 0) * 100) if c.stats.row_coverage is not none else '—' }}</td>
+        <td class="num">{{ c.stats.missing_keys if c.stats.missing_keys is not none else '—' }}</td>
+        <td>
+          {% if d %}
+          <span class="badge {{ d.action }}">{{ '已确认' if d.action == 'confirmed' else '已排除' }}</span>
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <div class="pager">
+    {% set pages = ((total + limit - 1) // limit) %}
+    {% if page > 1 %}<a class="btn small" href="{{ url_for('run_page', dataset_id=dataset.id, run_id=run.id, state=state_filter, width=width, q=q, page=page-1) }}">上一页</a>{% endif %}
+    <span class="muted">第 {{ page }} / {{ pages }} 页 · 共 {{ total }} 条</span>
+    {% if page < pages %}<a class="btn small" href="{{ url_for('run_page', dataset_id=dataset.id, run_id=run.id, state=state_filter, width=width, q=q, page=page+1) }}">下一页</a>{% endif %}
+  </div>
+  {% else %}
+  <p class="empty">没有匹配的候选。结构性排除的候选不计入此处，见上方「实际搜索范围」中的排除原因。</p>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+{% if running %}
+<script>
+(function poll() {
+  fetch("{{ url_for('run_status', dataset_id=dataset.id, run_id=run.id) }}")
+    .then(r => r.json())
+    .then(d => {
+      if (!d.running) { window.location.reload(); return; }
+      const n = Object.values(d.counts || {}).reduce((a, b) => a + b, 0);
+      const badge = document.getElementById('run-badge');
+      if (badge) badge.textContent = '{{ run_states.get('running', 'running') }} · ' + n;
+      setTimeout(poll, 1500);
+    })
+    .catch(() => setTimeout(poll, 4000));
+})();
+</script>
+{% endif %}
+{% endblock %}
